@@ -94,7 +94,7 @@ async def procesar_y_responder(numero_telefono: str, mensaje_usuario: str):
         # Contexto del bot (Instrucciones que le das como agencia)
         contexto = "Eres el asistente de la Clínica Aurora. Eres amable y conciso. No das precios exactos, pides que agenden cita."
         
-        modelo = genai.GenerativeModel('gemini-1.5-flash')
+        modelo = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"Instrucciones: {contexto}\n\nPaciente: {mensaje_usuario}\nAsistente:"
         
         respuesta_gemini = modelo.generate_content(prompt)
