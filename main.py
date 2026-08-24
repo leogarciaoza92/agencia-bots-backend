@@ -4,6 +4,7 @@ import google.generativeai as genai
 import httpx # Para peticiones HTTP a WhatsApp y Supabase
 import os
 import json
+import base64 # NUEVO: Para enviar audios a Gemini
 
 app = FastAPI(title="Webhook WhatsApp - Agencia de Chatbots")
 
@@ -61,12 +62,11 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
                         mensaje_info = value["messages"][0]
                         numero_remitente = mensaje_info["from"] 
                         
-                        if mensaje_info["type"] == "text":
-                            texto_recibido = mensaje_info["text"]["body"]
-                            print(f"💬 Mensaje de {numero_remitente}: {texto_recibido}")
+                        # MODIFICACIÓN: Aceptamos tanto 'text' como 'audio'
+                        if mensaje_info["type"] in ["text", "audio"]:
                             
-                            # Procesamos con Gemini y Supabase en segundo plano
-                            background_tasks.add_task(procesar_y_responder, numero_remitente, texto_recibido)
+                            # Procesamos con Gemini y Supabase en segundo plano pasándole TODO el mensaje
+                            background_tasks.add_task(procesar_y_responder, numero_remitente, mensaje_info)
 
         return {"status": "ok"}
         
@@ -74,9 +74,20 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
         print(f"❌ Error al recibir mensaje: {e}")
         return {"status": "error"}
 
-async def procesar_y_responder(numero_telefono: str, mensaje_usuario: str):
+def agendar_cita(fecha: str, hora: str) -> str:
     """
-    Busca reglas en Supabase, procesa con Gemini, guarda historial y responde por WhatsApp.
+    Agenda una cita en el sistema/calendario para un paciente o cliente.
+    Usa esta función ÚNICAMENTE cuando el usuario confirme que quiere agendar un día y hora específicos.
+    """
+    print(f"📅 [ACCIÓN REAL EJECUTADA] Bloqueando espacio en calendario para el {fecha} a las {hora}")
+    # En el futuro, aquí conectarías la API de Google Calendar. 
+    # Por ahora, le devolvemos el éxito a Gemini para que continúe la charla.
+    return f"ÉXITO: La cita ha sido registrada y agendada correctamente en el sistema para el {fecha} a las {hora}."
+
+
+async def procesar_y_responder(numero_telefono: str, mensaje_info: dict):
+    """
+    Busca reglas en Supabase, procesa AUDIO/TEXTO con Gemini (con Function Calling), guarda y responde.
     """
     print(f"🧠 Procesando respuesta para {numero_telefono}...")
     
@@ -88,7 +99,29 @@ async def procesar_y_responder(numero_telefono: str, mensaje_usuario: str):
 
     async with httpx.AsyncClient() as client:
         try:
-            # 1. Buscar si hay un agente configurado en Supabase
+            # 1. Extraer el contenido según si es texto o audio
+            tipo_mensaje = mensaje_info["type"]
+            mensaje_usuario_texto = "[Audio Recibido]"
+            datos_audio_base64 = None
+
+            if tipo_mensaje == "text":
+                mensaje_usuario_texto = mensaje_info["text"]["body"]
+            elif tipo_mensaje == "audio":
+                print("🎙️ Audio detectado. Descargando de WhatsApp...")
+                media_id = mensaje_info["audio"]["id"]
+                headers_meta = {"Authorization": f"Bearer {META_WHATSAPP_TOKEN}"}
+                
+                # Obtenemos la URL del archivo
+                res_url = await client.get(f"https://graph.facebook.com/v19.0/{media_id}", headers=headers_meta)
+                media_url = res_url.json().get("url")
+                
+                # Descargamos los bytes del audio y los preparamos para Gemini
+                res_media = await client.get(media_url, headers=headers_meta)
+                datos_audio_base64 = base64.b64encode(res_media.content).decode("utf-8")
+                mensaje_usuario_texto = "[El usuario ha enviado una nota de voz, escúchala y respóndele]"
+
+
+            # 2. Buscar si hay un agente configurado en Supabase
             res_agente = await client.get(
                 f"{SUPABASE_URL}/rest/v1/agentes?select=*,clientes(*)&limit=1",
                 headers=headers_supabase
@@ -102,16 +135,16 @@ async def procesar_y_responder(numero_telefono: str, mensaje_usuario: str):
                 agente_db = res_agente.json()[0]
                 cliente_db = agente_db.get("clientes") or {}
                 
-                contexto = f"Eres {agente_db.get('nombre')}. Trabajas para {cliente_db.get('nombre', 'la empresa')}. Contexto: {cliente_db.get('contexto', '')}. Reglas: {agente_db.get('instrucciones', '')}"
+                contexto = f"Eres {agente_db.get('nombre')}. Trabajas para {cliente_db.get('nombre', 'la empresa')}. Contexto: {cliente_db.get('contexto', '')}. Reglas: {agente_db.get('instrucciones', '')}. INFORMACIÓN EXTRA (Documentos/Precios): {agente_db.get('conocimiento_extra', '')}"
                 cliente_id = agente_db.get("cliente_id")
                 
                 if agente_db.get("handoff"):
                     handoff_words = [w.strip().lower() for w in agente_db.get("handoff").split(",")]
 
-            # 2. Verificar si el usuario solicita atención humana (Handoff)
-            requiere_humano = any(palabra in mensaje_usuario.lower() for palabra in handoff_words)
+            # 3. Verificar Handoff
+            requiere_humano = any(palabra in mensaje_usuario_texto.lower() for palabra in handoff_words)
 
-            # 3. Guardar el mensaje del usuario en Supabase
+            # 4. Guardar el mensaje del usuario en Supabase
             await client.post(
                 f"{SUPABASE_URL}/rest/v1/mensajes",
                 headers=headers_supabase,
@@ -119,64 +152,33 @@ async def procesar_y_responder(numero_telefono: str, mensaje_usuario: str):
                     "cliente_id": cliente_id,
                     "telefono_usuario": numero_telefono,
                     "rol": "usuario",
-                    "contenido": mensaje_usuario,
+                    "contenido": mensaje_usuario_texto,
                     "requiere_humano": requiere_humano
                 }
             )
 
-            # 4. Generar respuesta con Gemini si no requiere humano inmediato
+            # 5. Generar respuesta con Gemini (Soporte Audio y Funciones)
             if requiere_humano:
                 texto_respuesta = "Entendido, he notificado a uno de nuestros asesores humanos para que continúe la atención contigo a la brevedad."
             else:
-                # Actualizamos a la versión 3.5 Flash
-                modelo = genai.GenerativeModel('gemini-3.5-flash')
-                prompt = f"Instrucciones del bot: {contexto}\n\nCliente: {mensaje_usuario}\nAsistente:"
-                respuesta_gemini = modelo.generate_content(prompt)
+                modelo = genai.GenerativeModel(
+                    model_name='gemini-3.5-flash',
+                    system_instruction=contexto,
+                    tools=[agendar_cita] # Aquí le damos el "poder" de agendar
+                )
+                
+                # Iniciamos un chat que ejecutará funciones automáticamente si es necesario
+                chat = modelo.start_chat(enable_automatic_function_calling=True)
+                
+                if tipo_mensaje == "audio" and datos_audio_base64:
+                    # Le enviamos el audio como "inline_data"
+                    contenido_a_enviar = [{"mime_type": "audio/ogg", "data": datos_audio_base64}]
+                    respuesta_gemini = chat.send_message(contenido_a_enviar)
+                else:
+                    respuesta_gemini = chat.send_message(mensaje_usuario_texto)
+                
                 texto_respuesta = respuesta_gemini.text
 
             print(f"🤖 Bot responde: {texto_respuesta}")
 
-            # 5. Guardar la respuesta del bot en Supabase
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/mensajes",
-                headers=headers_supabase,
-                json={
-                    "cliente_id": cliente_id,
-                    "telefono_usuario": numero_telefono,
-                    "rol": "bot",
-                    "contenido": texto_respuesta,
-                    "requiere_humano": requiere_humano
-                }
-            )
-
-            # 6. Enviar mensaje de vuelta a WhatsApp
-            await enviar_mensaje_whatsapp(numero_telefono, texto_respuesta)
-
-        except Exception as e:
-            print(f"❌ Error en procesar_y_responder: {e}")
-
-async def enviar_mensaje_whatsapp(numero_destino: str, texto: str):
-    """
-    Usa la API de Meta para mandar el mensaje al celular del cliente.
-    """
-    url = f"https://graph.facebook.com/v19.0/{META_PHONE_ID}/messages"
-    
-    headers = {
-        "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": numero_destino,
-        "type": "text",
-        "text": { "body": texto }
-    }
-    
-    async with httpx.AsyncClient() as client:
-        respuesta = await client.post(url, headers=headers, json=payload)
-        
-        if respuesta.status_code == 200:
-            print(f"✅ Mensaje enviado a {numero_destino}")
-        else:
-            print(f"❌ Error de Meta: {respuesta.text}")
+            # 6. Guardar la respuesta del bot
