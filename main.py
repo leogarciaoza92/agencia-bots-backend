@@ -5,6 +5,7 @@ import httpx
 import os
 import json
 import base64
+from supabase import create_client, Client
 
 app = FastAPI(title="Webhook WhatsApp - Agencia de Chatbots")
 
@@ -17,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Limpiamos automáticamente cualquier salto de línea o espacio invisible en Render
 META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "mi_token_secreto_123").strip().replace("\n", "").replace("\r", "")
 META_WHATSAPP_TOKEN = os.environ.get("META_WHATSAPP_TOKEN", "TU_TOKEN_DE_META").strip().replace("\n", "").replace("\r", "")
 META_PHONE_ID = os.environ.get("META_PHONE_ID", "TU_PHONE_ID").strip().replace("\n", "").replace("\r", "")
@@ -25,6 +27,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "TU_API_KEY_GEMINI").strip().r
 # Configuración de Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://npkrraxozgrporgthxpd.supabase.co").strip().replace("\n", "").replace("\r", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wa3JyYXhvemdycG9yZ3RoeHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTY1MDksImV4cCI6MjEwMzA5MjUwOX0.JHwCPg9WccLa8VyFFd4BIW8QvMmL8E8oNqzRA_AbuzU").strip().replace("\n", "").replace("\r", "")
+
+# Inicializamos el cliente de Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Configuramos Gemini con la API Key
 genai.configure(api_key=GEMINI_API_KEY)
@@ -80,7 +85,8 @@ def agendar_cita(fecha: str, hora: str) -> str:
 
 async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
     """
-    Procesa el mensaje recibido (texto, audio o imagen) con Gemini y responde por WhatsApp.
+    Procesa el mensaje recibido (texto, audio o imagen) con Gemini, 
+    lo guarda en Supabase y responde por WhatsApp.
     """
     try:
         # Extraemos el texto del mensaje del usuario
@@ -94,7 +100,18 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
         print(f"💬 Mensaje de {numero_remitente}: {texto_usuario}")
 
-        # Configuramos el modelo de Gemini usando gemini-3.5-flash
+        # 1. GUARDAR MENSAJE DEL USUARIO EN SUPABASE
+        try:
+            supabase.table("mensajes").insert({
+                "telefono_usuario": numero_remitente,
+                "rol": "usuario",
+                "contenido": texto_usuario,
+                "requiere_humano": False
+            }).execute()
+        except Exception as db_error:
+            print(f"⚠️ Aviso: No se pudo guardar en Supabase (Usuario): {db_error}")
+
+        # Configuramos el modelo de Gemini
         model = genai.GenerativeModel(
             model_name="gemini-3.5-flash",
             system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
@@ -105,6 +122,17 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
         texto_respuesta = respuesta_ia.text if respuesta_ia and respuesta_ia.text else "¡Hola! ¿En qué puedo ayudar a tu mascota hoy?"
 
         print(f"🤖 Bot responde: {texto_respuesta}")
+
+        # 2. GUARDAR RESPUESTA DEL BOT EN SUPABASE
+        try:
+            supabase.table("mensajes").insert({
+                "telefono_usuario": numero_remitente,
+                "rol": "bot",
+                "contenido": texto_respuesta,
+                "requiere_humano": False
+            }).execute()
+        except Exception as db_error:
+            print(f"⚠️ Aviso: No se pudo guardar en Supabase (Bot): {db_error}")
 
         # Preparamos la petición HTTP para enviar el mensaje de vuelta a WhatsApp
         url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
@@ -131,3 +159,19 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
     except Exception as e:
         print(f"❌ Error interno en el procesamiento: {e}")
+```eof
+
+```text:requirements.txt
+fastapi
+uvicorn
+google-generativeai
+httpx
+pydantic
+supabase
+```eof
+
+### Lo único que tienes que hacer es:
+1. En tu GitHub, abre el archivo `main.py`, borra todo lo que tiene, pega **todo** el código nuevo de arriba y guárdalo.
+2. Abre el archivo `requirements.txt`, borra todo, pega la nueva lista (que ahora incluye `supabase`) y guárdalo.
+
+Render se va a reiniciar. En cuanto termine, ¡ya tendrás la magia de ver la conversación en tiempo real en tu panel web!
