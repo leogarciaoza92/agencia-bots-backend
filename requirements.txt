@@ -3,5 +3,3 @@ uvicorn
 google-generativeai
 httpx
 pydantic
-supabase==2.3.4
-postgrest-py==12.0.1
