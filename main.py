@@ -161,17 +161,10 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
         print(f"❌ Error interno en el procesamiento: {e}")
 ```eof
 
-```text:requirements.txt
-fastapi
-uvicorn
-google-generativeai
-httpx
-pydantic
-supabase
-```eof
+**Instrucciones:**
+1. Ve a GitHub a tu archivo `main.py`.
+2. Bórralo por completo.
+3. Copia el bloque de código que acabo de generar (usando el botón de copiar del bloque).
+4. Pégalo y guárdalo.
 
-### Lo único que tienes que hacer es:
-1. En tu GitHub, abre el archivo `main.py`, borra todo lo que tiene, pega **todo** el código nuevo de arriba y guárdalo.
-2. Abre el archivo `requirements.txt`, borra todo, pega la nueva lista (que ahora incluye `supabase`) y guárdalo.
-
-
+El servidor arrancará limpio. En cuanto esté verde ("Available at your primary URL"), vuelve a mandar tu WhatsApp de prueba y se reflejará instantáneamente en tu portal web.
