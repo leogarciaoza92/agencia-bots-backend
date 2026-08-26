@@ -174,4 +174,4 @@ supabase
 1. En tu GitHub, abre el archivo `main.py`, borra todo lo que tiene, pega **todo** el código nuevo de arriba y guárdalo.
 2. Abre el archivo `requirements.txt`, borra todo, pega la nueva lista (que ahora incluye `supabase`) y guárdalo.
 
-Render se va a reiniciar. En cuanto termine, ¡ya tendrás la magia de ver la conversación en tiempo real en tu panel web!
+
