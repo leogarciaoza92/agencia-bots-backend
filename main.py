@@ -35,9 +35,6 @@ async def verificar_meta(request: Request):
 
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
-    """
-    Procesa y responde el mensaje de forma directa para evitar bloqueos de red.
-    """
     try:
         cuerpo = await request.json()
         
@@ -53,7 +50,6 @@ async def recibir_mensaje(request: Request):
                         if mensaje_info["type"] in ["text", "audio", "image"]:
                             print(f"\n📥 NUEVO MENSAJE DE WHATSAPP RECIBIDO DE: {numero_remitente}")
                             
-                            # Extraemos el texto
                             texto_usuario = ""
                             if mensaje_info["type"] == "text":
                                 texto_usuario = mensaje_info["text"]["body"]
@@ -64,9 +60,9 @@ async def recibir_mensaje(request: Request):
 
                             print(f"💬 Texto: {texto_usuario}")
 
-                            # Generamos la respuesta con Gemini 1.5 Flash (súper estable)
+                            # Usamos el prefijo correcto que exige la librería actual
                             model = genai.GenerativeModel(
-                                model_name="gemini-1.5-flash",
+                                model_name="models/gemini-1.5-flash",
                                 system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
                             )
 
@@ -75,7 +71,6 @@ async def recibir_mensaje(request: Request):
 
                             print(f"🤖 Bot responde: {texto_respuesta}")
 
-                            # Enviamos de vuelta a WhatsApp
                             url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
                             headers = {
                                 "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
