@@ -78,3 +78,57 @@ def agendar_cita(fecha: str, hora: str) -> str:
     """
     print(f"📅 [ACCIÓN REAL EJECUTADA] Bloqueando espacio en calendario para el {fecha} a las {hora}")
     return f"ÉXITO: La cita ha sido registrada y agendada correctamente en el sistema para el {fecha} a las {hora}."
+async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
+    """
+    Procesa el mensaje recibido (texto, audio o imagen) con Gemini y responde por WhatsApp.
+    """
+    try:
+        # Extraemos el texto del mensaje del usuario
+        texto_usuario = ""
+        if mensaje_info["type"] == "text":
+            texto_usuario = mensaje_info["text"]["body"]
+        elif mensaje_info["type"] == "audio":
+            texto_usuario = "[El usuario envió un mensaje de voz]"
+        elif mensaje_info["type"] == "image":
+            texto_usuario = mensaje_info["image"].get("caption", "[El usuario envió una imagen]")
+
+        print(f"💬 Mensaje de {numero_remitente}: {texto_usuario}")
+
+        # Configuramos el modelo de Gemini
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
+        )
+
+        # Generamos la respuesta con la IA
+        respuesta_ia = model.generate_content(texto_usuario)
+        texto_respuesta = respuesta_ia.text if respuesta_ia and respuesta_ia.text else "¡Hola! ¿En qué puedo ayudar a tu mascota hoy?"
+
+        print(f"🤖 Bot responde: {texto_respuesta}")
+
+        # Preparamos la petición HTTP para enviar el mensaje de vuelta a WhatsApp
+        url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
+        
+        headers = {
+            "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": numero_remitente,
+            "type": "text",
+            "text": {"body": texto_respuesta}
+        }
+
+        # Enviamos el mensaje a través de la API de Meta
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=10.0)
+            if response.status_code != 200:
+                print(f"❌ Error al enviar mensaje a WhatsApp: {response.text}")
+            else:
+                print("✅ Mensaje enviado a WhatsApp exitosamente.")
+
+    except Exception as e:
+        print(f"❌ Error interno en el procesamiento: {e}")
+
