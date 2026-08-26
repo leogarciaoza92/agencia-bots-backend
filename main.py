@@ -17,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Limpiamos automáticamente cualquier salto de línea o espacio invisible en Render
 META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "mi_token_secreto_123").strip().replace("\n", "").replace("\r", "")
 META_WHATSAPP_TOKEN = os.environ.get("META_WHATSAPP_TOKEN", "TU_TOKEN_DE_META").strip().replace("\n", "").replace("\r", "")
 META_PHONE_ID = os.environ.get("META_PHONE_ID", "TU_PHONE_ID").strip().replace("\n", "").replace("\r", "")
@@ -78,6 +77,7 @@ def agendar_cita(fecha: str, hora: str) -> str:
     """
     print(f"📅 [ACCIÓN REAL EJECUTADA] Bloqueando espacio en calendario para el {fecha} a las {hora}")
     return f"ÉXITO: La cita ha sido registrada y agendada correctamente en el sistema para el {fecha} a las {hora}."
+
 async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
     """
     Procesa el mensaje recibido (texto, audio o imagen) con Gemini y responde por WhatsApp.
@@ -94,9 +94,9 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
         print(f"💬 Mensaje de {numero_remitente}: {texto_usuario}")
 
-        # Configuramos el modelo de Gemini
+        # Configuramos el modelo de Gemini usando gemini-3.5-flash
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-3.5-flash",
             system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
         )
 
@@ -131,4 +131,3 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
     except Exception as e:
         print(f"❌ Error interno en el procesamiento: {e}")
-
