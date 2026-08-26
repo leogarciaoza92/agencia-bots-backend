@@ -60,9 +60,9 @@ async def recibir_mensaje(request: Request):
 
                             print(f"💬 Texto: {texto_usuario}")
 
-                            # Usamos el prefijo correcto que exige la librería actual
+                            # Usamos el modelo nuevo y actualizado de tu lista
                             model = genai.GenerativeModel(
-                                model_name="models/gemini-1.5-flash",
+                                model_name="gemini-3.5-flash-lite",
                                 system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
                             )
 
