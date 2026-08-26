@@ -8,7 +8,6 @@ import base64
 
 app = FastAPI(title="Webhook WhatsApp - Agencia de Chatbots")
 
-# Habilitamos CORS para la comunicación con el frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,14 +21,10 @@ META_WHATSAPP_TOKEN = os.environ.get("META_WHATSAPP_TOKEN", "TU_TOKEN_DE_META").
 META_PHONE_ID = os.environ.get("META_PHONE_ID", "TU_PHONE_ID").strip().replace("\n", "").replace("\r", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "TU_API_KEY_GEMINI").strip().replace("\n", "").replace("\r", "")
 
-# Configuramos Gemini con la API Key
 genai.configure(api_key=GEMINI_API_KEY)
 
 @app.get("/webhook")
 async def verificar_meta(request: Request):
-    """
-    Ruta GET: Meta la usa para comprobar que el servidor te pertenece.
-    """
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
@@ -42,9 +37,6 @@ async def verificar_meta(request: Request):
 
 @app.post("/webhook")
 async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
-    """
-    Ruta POST: Aquí Meta envía los mensajes de WhatsApp de tus clientes.
-    """
     try:
         cuerpo = await request.json()
         
@@ -68,18 +60,11 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
         return {"status": "error"}
 
 def agendar_cita(fecha: str, hora: str) -> str:
-    """
-    Agenda una cita en el sistema/calendario para un paciente o cliente.
-    """
     print(f"📅 [ACCIÓN REAL EJECUTADA] Bloqueando espacio en calendario para el {fecha} a las {hora}")
     return f"ÉXITO: La cita ha sido registrada y agendada correctamente en el sistema para el {fecha} a las {hora}."
 
 async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
-    """
-    Procesa el mensaje recibido (texto, audio o imagen) con Gemini y responde por WhatsApp.
-    """
     try:
-        # Extraemos el texto del mensaje del usuario
         texto_usuario = ""
         if mensaje_info["type"] == "text":
             texto_usuario = mensaje_info["text"]["body"]
@@ -90,19 +75,16 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
         print(f"💬 Mensaje de {numero_remitente}: {texto_usuario}")
 
-        # Configuramos el modelo de Gemini usando gemini-3.5-flash
         model = genai.GenerativeModel(
             model_name="gemini-3.5-flash",
             system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
         )
 
-        # Generamos la respuesta con la IA
         respuesta_ia = model.generate_content(texto_usuario)
         texto_respuesta = respuesta_ia.text if respuesta_ia and respuesta_ia.text else "¡Hola! ¿En qué puedo ayudar a tu mascota hoy?"
 
         print(f"🤖 Bot responde: {texto_respuesta}")
 
-        # Preparamos la petición HTTP para enviar el mensaje de vuelta a WhatsApp
         url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
         
         headers = {
@@ -117,7 +99,6 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
             "text": {"body": texto_respuesta}
         }
 
-        # Enviamos el mensaje a través de la API de Meta
         async with httpx.AsyncClient() as client:
             response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=10.0)
             if response.status_code != 200:
@@ -127,4 +108,3 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
     except Exception as e:
         print(f"❌ Error interno en el procesamiento: {e}")
-
