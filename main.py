@@ -59,10 +59,6 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
         print(f"❌ Error al recibir mensaje: {e}")
         return {"status": "error"}
 
-def agendar_cita(fecha: str, hora: str) -> str:
-    print(f"📅 [ACCIÓN REAL EJECUTADA] Bloqueando espacio en calendario para el {fecha} a las {hora}")
-    return f"ÉXITO: La cita ha sido registrada y agendada correctamente en el sistema para el {fecha} a las {hora}."
-
 async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
     try:
         texto_usuario = ""
@@ -75,6 +71,7 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
 
         print(f"💬 Mensaje de {numero_remitente}: {texto_usuario}")
 
+        print("🤖 Intentando conectar con Gemini...")
         model = genai.GenerativeModel(
             model_name="gemini-3.5-flash",
             system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
@@ -99,6 +96,7 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
             "text": {"body": texto_respuesta}
         }
 
+        print("📤 Enviando respuesta de vuelta a Meta...")
         async with httpx.AsyncClient() as client:
             response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=10.0)
             if response.status_code != 200:
@@ -107,4 +105,4 @@ async def procesar_y_responder(numero_remitente: str, mensaje_info: dict):
                 print("✅ Mensaje enviado a WhatsApp exitosamente.")
 
     except Exception as e:
-        print(f"❌ Error interno en el procesamiento: {e}")
+        print(f"❌ EXCEPCIÓN INTERNA CAPTURADA: {e}")
