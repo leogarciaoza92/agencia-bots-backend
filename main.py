@@ -28,9 +28,9 @@ async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
     try:
         print(f"💬 Procesando en el fondo el mensaje: {texto_usuario}")
         
-        # Generamos la respuesta con Gemini
+        # ⚠️ AQUÍ ESTÁ EL MODELO NUEVO (3.7 Flash)
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-3.7-flash",
             system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
         )
 
@@ -98,8 +98,7 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
                             elif mensaje_info["type"] == "image":
                                 texto_usuario = mensaje_info["image"].get("caption", "[El usuario envió una imagen]")
 
-                            # ⚠️ AQUÍ ESTÁ LA MAGIA: 
-                            # Mandamos a Gemini a trabajar al fondo, pero no lo esperamos.
+                            # Mandamos a Gemini a trabajar al fondo para que Meta no se desespere
                             background_tasks.add_task(procesar_y_responder, numero_remitente, texto_usuario)
 
         # Le decimos a Meta INMEDIATAMENTE que todo está OK para que no reenvíe el mensaje
