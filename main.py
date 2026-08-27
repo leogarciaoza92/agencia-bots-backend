@@ -1,11 +1,13 @@
 from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import google.generativeai as genai
 import httpx
 import os
 
 app = FastAPI(title="Webhook WhatsApp - Agencia de Chatbots")
 
+# Habilitamos CORS para que el Panel HTML pueda comunicarse con este servidor
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,7 +24,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "TU_API_KEY_GEMINI").strip().r
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ---------------------------------------------------------
-# FUNCIÓN DE RESPUESTA CON MODELO ACTUALIZADO (3.5 Flash-Lite)
+# FUNCIÓN DE RESPUESTA AUTOMÁTICA CON IA
 # ---------------------------------------------------------
 async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
     try:
@@ -44,7 +46,6 @@ async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
 
         print(f"🤖 Bot responde: {texto_respuesta}")
 
-        # Enviamos el mensaje de vuelta a WhatsApp de inmediato
         url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
         headers = {
             "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
@@ -75,7 +76,6 @@ async def verificar_meta(request: Request):
     challenge = request.query_params.get("hub.challenge")
 
     if mode == "subscribe" and token == META_VERIFY_TOKEN:
-        print("✅ Webhook verificado por Meta exitosamente.")
         return Response(content=challenge, media_type="text/plain")
     
     raise HTTPException(status_code=403, detail="Token de verificación inválido")
@@ -110,3 +110,34 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         print(f"❌ Error en webhook principal: {e}")
         return {"status": "error"}
+
+# ---------------------------------------------------------
+# NUEVA RUTA PARA QUE EL PANEL HTML PUEDA MANDAR MENSAJES MANUALES
+# ---------------------------------------------------------
+class MensajeManual(BaseModel):
+    telefono: str
+    mensaje: str
+
+@app.post("/enviar_mensaje")
+async def enviar_mensaje_desde_panel(datos: MensajeManual):
+    try:
+        url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": datos.telefono,
+            "type": "text",
+            "text": {"body": datos.mensaje}
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=10.0)
+            if response.status_code == 200:
+                return {"status": "ok", "detalle": "Enviado a WhatsApp"}
+            else:
+                return {"status": "error", "detalle": response.text}
+    except Exception as e:
+        return {"status": "error", "detalle": str(e)}
