@@ -22,20 +22,26 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "TU_API_KEY_GEMINI").strip().r
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ---------------------------------------------------------
-# FUNCIÓN QUE TRABAJA EN EL FONDO (SIN HACER ESPERAR A META)
+# FUNCIÓN QUE TRABAJA EN EL FONDO 
 # ---------------------------------------------------------
 async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
     try:
         print(f"💬 Procesando en el fondo el mensaje: {texto_usuario}")
         
-        # ⚠️ AQUÍ ESTÁ EL MODELO NUEVO (3.7 Flash)
+        # Le damos instrucciones de cómo actuar con síntomas médicos
         model = genai.GenerativeModel(
             model_name="gemini-3.7-flash",
-            system_instruction="Eres un asistente virtual amable para una veterinaria llamada Veterinaria Gzz. Ayudas a los clientes a resolver dudas y agendar citas."
+            system_instruction="Eres un asistente virtual amable para la Veterinaria Gzz. Si el cliente menciona que su mascota está enferma o tiene síntomas, muestra empatía, NO des diagnósticos médicos, e invítalos a llevar a la mascota a consulta presencial o agendar una cita."
         )
 
         respuesta_ia = model.generate_content(texto_usuario)
-        texto_respuesta = respuesta_ia.text if respuesta_ia and respuesta_ia.text else "¡Hola! ¿En qué puedo ayudar a tu mascota hoy?"
+        
+        # ⚠️ RED DE SEGURIDAD: Si Gemini bloquea la respuesta por ser un tema médico delicado
+        try:
+            texto_respuesta = respuesta_ia.text
+        except ValueError:
+            texto_respuesta = "Entiendo lo que me comentas. Por la seguridad y salud de tu mascota, lo más recomendable es que la revise nuestro médico veterinario en la clínica. ¿Te gustaría agendar una cita para que la evaluemos?"
+
         print(f"🤖 Bot responde: {texto_respuesta}")
 
         # Enviamos el mensaje de vuelta a WhatsApp
@@ -89,7 +95,6 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
                         numero_remitente = mensaje_info["from"] 
                         
                         if mensaje_info["type"] in ["text", "audio", "image"]:
-                            # Extraemos el texto
                             texto_usuario = ""
                             if mensaje_info["type"] == "text":
                                 texto_usuario = mensaje_info["text"]["body"]
@@ -98,10 +103,8 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
                             elif mensaje_info["type"] == "image":
                                 texto_usuario = mensaje_info["image"].get("caption", "[El usuario envió una imagen]")
 
-                            # Mandamos a Gemini a trabajar al fondo para que Meta no se desespere
                             background_tasks.add_task(procesar_y_responder, numero_remitente, texto_usuario)
 
-        # Le decimos a Meta INMEDIATAMENTE que todo está OK para que no reenvíe el mensaje
         return {"status": "ok"}
         
     except Exception as e:
