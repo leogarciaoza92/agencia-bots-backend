@@ -22,29 +22,29 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "TU_API_KEY_GEMINI").strip().r
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ---------------------------------------------------------
-# FUNCIÓN QUE TRABAJA EN EL FONDO 
+# FUNCIÓN DE RESPUESTA CON MODELO ACTUALIZADO (3.5 Flash-Lite)
 # ---------------------------------------------------------
 async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
     try:
-        print(f"💬 Procesando en el fondo el mensaje: {texto_usuario}")
+        print(f"💬 Procesando mensaje: {texto_usuario}")
         
-        # Le damos instrucciones de cómo actuar con síntomas médicos
+        # Usamos el modelo actual gemini-3.5-flash-lite
         model = genai.GenerativeModel(
-            model_name="gemini-3.7-flash",
-            system_instruction="Eres un asistente virtual amable para la Veterinaria Gzz. Si el cliente menciona que su mascota está enferma o tiene síntomas, muestra empatía, NO des diagnósticos médicos, e invítalos a llevar a la mascota a consulta presencial o agendar una cita."
+            model_name="gemini-3.5-flash-lite",
+            system_instruction="Eres un asistente virtual amable para la Veterinaria Gzz. Ayudas a los clientes con dudas generales de servicios, horarios y a agendar citas. Si te mencionan que una mascota tiene un problema o síntoma, sé amable y recomiéndales agendar una cita de revisión en la clínica."
         )
 
-        respuesta_ia = model.generate_content(texto_usuario)
-        
-        # ⚠️ RED DE SEGURIDAD: Si Gemini bloquea la respuesta por ser un tema médico delicado
+        # Generamos la respuesta con protección contra filtros de seguridad
         try:
-            texto_respuesta = respuesta_ia.text
-        except ValueError:
-            texto_respuesta = "Entiendo lo que me comentas. Por la seguridad y salud de tu mascota, lo más recomendable es que la revise nuestro médico veterinario en la clínica. ¿Te gustaría agendar una cita para que la evaluemos?"
+            respuesta_ia = model.generate_content(texto_usuario)
+            texto_respuesta = respuesta_ia.text if respuesta_ia and respuesta_ia.text else "¡Hola! ¿En qué podemos ayudar a tu mascota hoy?"
+        except Exception as api_err:
+            print(f"⚠️ Aviso de filtro de IA: {api_err}")
+            texto_respuesta = "Entiendo lo que comentas sobre tu mascota. Lo mejor para salir de dudas y cuidarla es que la revise nuestro veterinario en la clínica. ¿Te gustaría que te agendemos una cita?"
 
         print(f"🤖 Bot responde: {texto_respuesta}")
 
-        # Enviamos el mensaje de vuelta a WhatsApp
+        # Enviamos el mensaje de vuelta a WhatsApp de inmediato
         url_whatsapp = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
         headers = {
             "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
@@ -58,14 +58,14 @@ async def procesar_y_responder(numero_remitente: str, texto_usuario: str):
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=15.0)
+            response = await client.post(url_whatsapp, headers=headers, json=payload, timeout=10.0)
             if response.status_code != 200:
                 print(f"❌ Error al enviar a WhatsApp: {response.text}")
             else:
                 print("✅ Mensaje respondido en WhatsApp exitosamente.")
                 
     except Exception as e:
-        print(f"❌ Error en la tarea de fondo: {e}")
+        print(f"❌ Error crítico en la tarea de fondo: {e}")
 
 
 @app.get("/webhook")
@@ -108,5 +108,5 @@ async def recibir_mensaje(request: Request, background_tasks: BackgroundTasks):
         return {"status": "ok"}
         
     except Exception as e:
-        print(f"❌ Error crítico en webhook: {e}")
+        print(f"❌ Error en webhook principal: {e}")
         return {"status": "error"}
